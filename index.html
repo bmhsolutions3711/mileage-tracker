@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Mileage Tracker</title>
-<link rel="manifest" href="manifest.json?v=1">
-<link rel="icon" href="icon-192.png">
-<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.json?v=2">
+<link rel="icon" href="icon-192.png?v=2">
+<link rel="apple-touch-icon" href="icon-192.png?v=2">
 <style>
   :root {
     --bg: #0a0a0a;
@@ -286,7 +286,7 @@
 </div>
 
 <div class="header">
-  <div class="logo"><span class="y">MILEAGE</span> TRACKER <span class="build-pill">v1</span></div>
+  <div class="logo"><span class="y">MILEAGE</span> TRACKER <span class="build-pill">v2</span></div>
   <div id="statusPill" class="status-pill idle">IDLE</div>
 </div>
 
@@ -346,7 +346,7 @@
 <script>
 'use strict';
 
-const BUILD = 'v1';
+const BUILD = 'v2';
 const API_BASE = 'https://bryans-macbook-pro-1.tail1ed408.ts.net:8440/api/finance';
 const TOKEN_KEY = 'mileage_token';
 
@@ -769,7 +769,7 @@ async function init() {
 
 // ── Boot ────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js?v=1', { scope: './' }).catch(() => {});
+  navigator.serviceWorker.register('sw.js?v=2', { scope: './' }).catch(() => {});
 }
 
 checkAuth().then(ok => {

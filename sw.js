@@ -1,10 +1,10 @@
-const CACHE_NAME = 'mt-shell-v1';
+const CACHE_NAME = 'mt-shell-v2';
 const SHELL = [
   './',
-  './index.html?v=1',
-  './manifest.json?v=1',
-  './icon-192.png',
-  './icon-512.png',
+  './index.html?v=2',
+  './manifest.json?v=2',
+  './icon-192.png?v=2',
+  './icon-512.png?v=2',
 ];
 
 self.addEventListener('install', (e) => {
