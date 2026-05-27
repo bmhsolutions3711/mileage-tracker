@@ -7,9 +7,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <title>Mileage Tracker</title>
-<link rel="manifest" href="manifest.json?v=2">
-<link rel="icon" href="icon-192.png?v=2">
-<link rel="apple-touch-icon" href="icon-192.png?v=2">
+<link rel="manifest" href="manifest.json?v=4">
+<link rel="icon" href="icon-192.png?v=4">
+<link rel="apple-touch-icon" href="icon-192.png?v=4">
 <style>
   :root {
     --bg: #0a0a0a;
@@ -346,7 +346,7 @@
 <script>
 'use strict';
 
-const BUILD = 'v2';
+const BUILD = 'v4';
 const API_BASE = 'https://bryans-macbook-pro-1.tail1ed408.ts.net:8440/api/finance';
 const TOKEN_KEY = 'mileage_token';
 
@@ -366,6 +366,9 @@ let todayMiles = 0;
 let weekMiles = 0;
 let isTracking = false;
 let wakeLock = null;
+let stopConfirmTimer = null;
+let keepAliveInterval = null;
+let noSleepAudio = null;
 
 // ── DOM ─────────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
@@ -605,6 +608,83 @@ function onPosError(err) {
   showToast('GPS error: ' + err.message, 'error');
 }
 
+// ── Background keep-alive ──────────────────────────────────────────────
+function startNoSleepAudio() {
+  // Silent audio loop — tricks Android into keeping the browser alive
+  // even when screen is off. Same pattern as NoSleep.js.
+  try {
+    if (noSleepAudio) return;
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    gain.gain.value = 0.001; // inaudible
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    noSleepAudio = { ctx, osc, gain };
+  } catch (e) { /* older browsers — silent fail */ }
+}
+
+function stopNoSleepAudio() {
+  if (!noSleepAudio) return;
+  try {
+    noSleepAudio.osc.stop();
+    noSleepAudio.ctx.close();
+  } catch (e) { /* ignore */ }
+  noSleepAudio = null;
+}
+
+function startKeepAlive() {
+  if (keepAliveInterval) return;
+  // Heartbeat every 10s — touch IndexedDB to keep JS context alive
+  keepAliveInterval = setInterval(() => {
+    if (db && isTracking) {
+      try {
+        const tx = db.transaction(STORE_META, 'readonly');
+        tx.objectStore(STORE_META).get('heartbeat');
+      } catch (e) { /* ignore */ }
+    }
+  }, 10000);
+}
+
+function stopKeepAlive() {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+}
+
+async function showTrackingNotification() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    await Notification.requestPermission();
+  }
+  if (Notification.permission === 'granted') {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      reg.showNotification('Mileage Tracker', {
+        body: 'Tracking active — GPS recording miles',
+        icon: 'icon-192.png',
+        tag: 'tracking-active',
+        ongoing: true,
+        requireInteraction: true,
+        silent: true,
+      });
+    } catch (e) {
+      // Fallback to regular notification if SW notification fails
+      try { new Notification('Mileage Tracker', { body: 'Tracking active', icon: 'icon-192.png', tag: 'tracking-active', silent: true }); } catch (e2) { /* ignore */ }
+    }
+  }
+}
+
+async function clearTrackingNotification() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const notes = await reg.getNotifications({ tag: 'tracking-active' });
+    notes.forEach(n => n.close());
+  } catch (e) { /* ignore */ }
+}
+
 async function startTracking() {
   if (!('geolocation' in navigator)) {
     showToast('No geolocation API', 'error');
@@ -617,17 +697,43 @@ async function startTracking() {
   $('btnTrack').classList.add('btn-stop');
   await setMeta('was_tracking', true);
 
+  // Wake lock — keep screen on
   try {
     if ('wakeLock' in navigator) {
       wakeLock = await navigator.wakeLock.request('screen');
     }
   } catch (e) { /* ignore */ }
 
+  // Background keep-alive trio
+  startNoSleepAudio();
+  startKeepAlive();
+  await showTrackingNotification();
+
   watchId = navigator.geolocation.watchPosition(onPosition, onPosError, {
     enableHighAccuracy: true,
     maximumAge: 2000,
     timeout: 30000,
   });
+}
+
+function requestStop() {
+  const btn = $('btnTrack');
+  if (stopConfirmTimer) {
+    // Second tap — actually stop
+    clearTimeout(stopConfirmTimer);
+    stopConfirmTimer = null;
+    stopTracking();
+    return;
+  }
+  // First tap — enter confirm state
+  btn.textContent = 'Confirm Stop';
+  btn.style.background = '#f97316';  // orange warning
+  stopConfirmTimer = setTimeout(() => {
+    // Revert after 3s if no second tap
+    stopConfirmTimer = null;
+    btn.textContent = 'Stop';
+    btn.style.background = '';
+  }, 3000);
 }
 
 async function stopTracking() {
@@ -640,10 +746,16 @@ async function stopTracking() {
     try { await wakeLock.release(); } catch (e) { /* ignore */ }
     wakeLock = null;
   }
+  // Kill background keep-alive
+  stopNoSleepAudio();
+  stopKeepAlive();
+  await clearTrackingNotification();
+
   setStatus('IDLE', 'idle');
   $('btnTrack').textContent = 'Start Tracking';
   $('btnTrack').classList.remove('btn-stop');
   $('btnTrack').classList.add('btn-primary');
+  $('btnTrack').style.background = '';
   $('speedDisplay').textContent = '—';
   await setMeta('was_tracking', false);
   lastFix = null;
@@ -742,7 +854,7 @@ async function init() {
     $('lastSync').textContent = new Date(lastSync).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   }
 
-  $('btnTrack').addEventListener('click', () => isTracking ? stopTracking() : startTracking());
+  $('btnTrack').addEventListener('click', () => isTracking ? requestStop() : startTracking());
   $('btnSync').addEventListener('click', syncToBIK);
 
   const wasTracking = await getMeta('was_tracking', false);
@@ -769,7 +881,7 @@ async function init() {
 
 // ── Boot ────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js?v=2', { scope: './' }).catch(() => {});
+  navigator.serviceWorker.register('sw.js?v=4', { scope: './' }).catch(() => {});
 }
 
 checkAuth().then(ok => {
