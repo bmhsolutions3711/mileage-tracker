@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mt-shell-v4';
+const CACHE_NAME = 'mt-shell-v5';
 const SHELL = [
   './',
   './index.html?v=4',
