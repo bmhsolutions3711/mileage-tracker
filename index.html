@@ -286,7 +286,7 @@
 </div>
 
 <div class="header">
-  <div class="logo"><span class="y">MILEAGE</span> TRACKER <span class="build-pill">v5</span></div>
+  <div class="logo"><span class="y">MILEAGE</span> TRACKER <span class="build-pill">…</span></div>
   <div id="statusPill" class="status-pill idle">IDLE</div>
 </div>
 
@@ -902,8 +902,22 @@ async function init() {
 }
 
 // ── Boot ────────────────────────────────────────────────────────────────
+// SW register + build pill auto-sync. sw.js's CACHE_NAME is the source of truth.
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js?v=5', { scope: './' }).catch(() => {});
+  fetch('sw.js?_=' + Date.now(), {cache: 'no-store'})
+    .then(r => r.text())
+    .then(t => {
+      const m = t.match(/CACHE_NAME\s*=\s*["']([^"']+)["']/);
+      const ver = (m && m[1].match(/v\d+/i)) ? m[1].match(/v\d+/i)[0] : null;
+      if (ver) {
+        const pill = document.querySelector('.build-pill') || document.getElementById('buildPill');
+        if (pill) pill.textContent = ver;
+        navigator.serviceWorker.register('sw.js?' + ver, { scope: './' }).catch(() => {});
+      } else {
+        navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {});
+      }
+    })
+    .catch(() => navigator.serviceWorker.register('sw.js', { scope: './' }).catch(() => {}));
 }
 
 checkAuth().then(ok => {
