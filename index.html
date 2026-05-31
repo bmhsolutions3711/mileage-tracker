@@ -66,6 +66,31 @@ header p{font-size:.8rem;color:var(--muted);margin-top:2px}
 .setup .save-setup{margin-top:10px;background:var(--accent);color:#000;border:none;border-radius:8px;padding:8px 16px;font-weight:600;cursor:pointer;font-size:.8rem}
 .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--accent2);color:#000;padding:10px 20px;border-radius:20px;font-size:.85rem;font-weight:600;z-index:100;opacity:0;transition:opacity .3s}
 .toast.show{opacity:1}
+.cpm-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin:12px 0}
+.cpm-head{display:flex;justify-content:space-between;align-items:center;cursor:pointer}
+.cpm-title{font-size:.8rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.cpm-hero{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.cpm-metric{text-align:center;background:var(--card);border-radius:8px;padding:10px}
+.cpm-metric .big{font-size:1.5rem;font-weight:700;color:var(--accent2)}
+.cpm-metric .big.over{color:var(--danger)}
+.cpm-metric .lbl{font-size:.6rem;color:var(--muted);text-transform:uppercase;margin-top:2px}
+.cpm-metric .est{font-size:.5rem;color:var(--accent);border:1px solid var(--accent);border-radius:5px;padding:0 4px;margin-left:4px;vertical-align:middle}
+.cpm-floor{margin-top:12px}
+.cpm-floor .bar{height:8px;background:var(--card);border-radius:6px;overflow:hidden}
+.cpm-floor .fill{height:100%;background:var(--accent2);border-radius:6px;transition:width .3s}
+.cpm-floor .fill.over{background:var(--danger)}
+.cpm-floor .floor-lbl{display:flex;justify-content:space-between;font-size:.6rem;color:var(--muted);margin-top:4px}
+.cpm-detail{display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px}
+.cpm-detail.open{display:block}
+.cpm-period{display:flex;gap:4px}
+.cpm-period button{flex:1;background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:6px;padding:5px;font-size:.65rem;cursor:pointer}
+.cpm-period button.active{border-color:var(--accent);color:var(--accent)}
+.cpm-row{display:flex;justify-content:space-between;font-size:.8rem;padding:3px 0}
+.cpm-row .k{color:var(--muted)}
+.cpm-row.tot{font-weight:700;border-top:1px solid var(--border);margin-top:4px;padding-top:6px}
+.cpm-settings{display:flex;gap:8px;margin-top:12px}
+.cpm-settings input{flex:1;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:8px;color:var(--text);font-size:.85rem}
+.cpm-note{font-size:.65rem;color:var(--muted);margin-top:10px;line-height:1.45}
 </style>
 </head>
 <body>
@@ -79,6 +104,35 @@ header p{font-size:.8rem;color:var(--muted);margin-top:2px}
     <div class="stat"><div class="value" id="statWeek">--</div><div class="label">This Week</div></div>
     <div class="stat"><div class="value" id="statMonth">--</div><div class="label">This Month</div></div>
     <div class="stat"><div class="value" id="statTotal">--</div><div class="label">Total</div></div>
+  </div>
+
+  <div class="cpm-card" id="cpmCard">
+    <div class="cpm-head" onclick="toggleCpm()">
+      <span class="cpm-title">&#128176; Cost / Mile</span>
+      <span id="cpmToggle" style="color:var(--muted);font-size:.85rem">&#9662;</span>
+    </div>
+    <div class="cpm-hero">
+      <div class="cpm-metric"><div class="big" id="cpmFuel">--</div><div class="lbl">Fuel $/mi</div></div>
+      <div class="cpm-metric"><div class="big" id="cpmOp">--</div><div class="lbl">Operating $/mi</div></div>
+    </div>
+    <div class="cpm-floor">
+      <div class="bar"><div class="fill" id="cpmFill" style="width:0%"></div></div>
+      <div class="floor-lbl"><span id="cpmFloorPos">&mdash;</span><span>floor $1.00/mi</span></div>
+    </div>
+    <div class="cpm-detail" id="cpmDetail">
+      <div class="cpm-period">
+        <button data-p="all" class="active" onclick="setCpmPeriod('all')">All</button>
+        <button data-p="ytd" onclick="setCpmPeriod('ytd')">YTD</button>
+        <button data-p="90d" onclick="setCpmPeriod('90d')">90d</button>
+        <button data-p="30d" onclick="setCpmPeriod('30d')">30d</button>
+      </div>
+      <div id="cpmRows" style="margin-top:10px"></div>
+      <div class="cpm-settings">
+        <input type="number" step="0.01" inputmode="decimal" id="dieselInput" placeholder="Diesel $/gal">
+        <input type="number" step="0.1" inputmode="decimal" id="mpgInput" placeholder="MPG">
+      </div>
+      <div class="cpm-note" id="cpmNote"></div>
+    </div>
   </div>
 
   <label class="capture-btn" id="captureBtn">
@@ -322,6 +376,7 @@ window.saveEntry = async () => {
       $('captureBtn').style.display = 'flex';
       loadEntries();
       loadStats();
+      loadCpm();
     } else {
       const d = await resp.json();
       toast(d.error || 'Save failed');
@@ -379,6 +434,68 @@ async function loadStats() {
   } catch {}
 }
 
+// ── Cost per mile ──
+let cpmPeriod = 'all';
+window.toggleCpm = () => {
+  const d = $('cpmDetail');
+  d.classList.toggle('open');
+  $('cpmToggle').textContent = d.classList.contains('open') ? '▴' : '▾';
+  if (d.classList.contains('open')) loadCpm();
+};
+window.setCpmPeriod = (p) => {
+  cpmPeriod = p;
+  document.querySelectorAll('.cpm-period button').forEach(b => b.classList.toggle('active', b.dataset.p === p));
+  loadCpm();
+};
+function fmtMoney(n){ return n==null?'--':'$'+Number(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function fmtCpm(n){ return n==null?'--':'$'+Number(n).toFixed(2); }
+async function loadCpm(){
+  if (!API_URL) return;
+  const diesel = localStorage.getItem('mt_diesel') || '';
+  const mpg = localStorage.getItem('mt_mpg') || '';
+  if ($('dieselInput') && document.activeElement !== $('dieselInput')) $('dieselInput').value = diesel;
+  if ($('mpgInput') && document.activeElement !== $('mpgInput')) $('mpgInput').value = mpg;
+  const qs = new URLSearchParams({period: cpmPeriod});
+  if (diesel) qs.set('diesel', diesel);
+  if (mpg) qs.set('mpg', mpg);
+  try { renderCpm(await (await fetch(`${API_URL}/api/cpm?${qs}`, {headers: headers()})).json()); } catch {}
+}
+function renderCpm(d){
+  const fuelActual = d.fuel_cpm, fuelEst = d.estimate && d.estimate.fuel_cpm_est;
+  const fuelEl = $('cpmFuel');
+  if (fuelActual != null) fuelEl.innerHTML = fmtCpm(fuelActual);
+  else if (fuelEst != null) fuelEl.innerHTML = fmtCpm(fuelEst) + '<span class="est">est</span>';
+  else fuelEl.textContent = '--';
+  const opEl = $('cpmOp');
+  if (d.operating_cpm != null) { opEl.textContent = fmtCpm(d.operating_cpm); opEl.classList.toggle('over', d.operating_cpm > d.floor); }
+  else { opEl.innerHTML = '<span style="font-size:.85rem;color:var(--muted)">accruing</span>'; opEl.classList.remove('over'); }
+  const ref = d.operating_cpm != null ? d.operating_cpm : (fuelActual != null ? fuelActual : fuelEst);
+  const fill = $('cpmFill');
+  if (ref != null) {
+    fill.style.width = Math.min(ref / d.floor, 1) * 100 + '%';
+    fill.classList.toggle('over', ref > d.floor);
+    $('cpmFloorPos').textContent = fmtCpm(ref) + '/mi' + (d.operating_cpm == null ? ' fuel est' : '');
+  } else { fill.style.width = '0%'; $('cpmFloorPos').textContent = '—'; }
+  const c = d.costs || {};
+  $('cpmRows').innerHTML =
+    [['Fuel',c.fuel],['Maintenance',c.maintenance],['Tolls',c.tolls],['Supplies',c.supplies],['Insurance',c.insurance]]
+      .map(function(kv){ return `<div class="cpm-row"><span class="k">${kv[0]}</span><span>${fmtMoney(kv[1])}</span></div>`; }).join('')
+    + `<div class="cpm-row tot"><span class="k">Operating</span><span>${fmtMoney(c.operating)}</span></div>`
+    + `<div class="cpm-row"><span class="k">+ lodging/food = all-in</span><span>${fmtMoney(c.all_in)}</span></div>`;
+  let note = '';
+  if (!d.miles_available) note = 'Snap 2+ photos so miles can be measured' + (d.latest_odometer ? ` (odometer ${Number(d.latest_odometer).toLocaleString()} mi).` : '.');
+  else if (!d.overlap) note = `Costs (${(d.cost_window||{}).start} → ${(d.cost_window||{}).end}) and miles don't overlap yet — import recent statements to unlock actual CPM.`;
+  if (!(d.estimate && d.estimate.fuel_cpm_est)) note += ' Enter diesel $/gal below for an instant fuel-cost estimate.';
+  $('cpmNote').textContent = note;
+}
+['dieselInput','mpgInput'].forEach(function(id){
+  const el = $(id); if (!el) return;
+  el.addEventListener('change', function(e){
+    localStorage.setItem(id === 'dieselInput' ? 'mt_diesel' : 'mt_mpg', e.target.value);
+    loadCpm();
+  });
+});
+
 // Settings toggle — long press header
 let pressTimer;
 document.querySelector('header').addEventListener('pointerdown', () => {
@@ -397,6 +514,7 @@ document.querySelector('header').addEventListener('pointerleave', () => clearTim
 // Init
 loadEntries();
 loadStats();
+loadCpm();
 </script>
 </body>
 </html>
