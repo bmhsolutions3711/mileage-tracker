@@ -142,22 +142,65 @@ const $ = id => document.getElementById(id);
 let API_URL = localStorage.getItem('mt_api') || '';
 let API_TOKEN = localStorage.getItem('mt_token') || '';
 
-// Scan-to-connect: a QR deep-link carries config in the URL fragment
-// (#cfg=<url-encoded JSON>). Fragments never reach GitHub's servers, so the
-// token stays client-side. Apply it, persist, then wipe the hash from history
-// so the token never lingers in the address bar or back-stack.
-(function applyConfigFragment() {
-  const m = (location.hash || '').match(/[#&]cfg=([^&]+)/);
-  if (!m) return;
-  try {
-    const cfg = JSON.parse(decodeURIComponent(m[1]));
-    if (cfg.api)   { API_URL = cfg.api.replace(/\/$/, ''); localStorage.setItem('mt_api', API_URL); }
-    if (cfg.token) { API_TOKEN = cfg.token; localStorage.setItem('mt_token', API_TOKEN); }
-    history.replaceState(null, '', location.pathname + location.search);
-    setTimeout(() => toast('Connected via QR'), 300);
-  } catch (e) { /* malformed fragment — ignore, fall through to manual setup */ }
-})();
+// ── BIK PWA standard: auto-update + #reset + scan-to-connect ──────────────
+// Canonical source: ~/Local Models/bik/pwa-standard/bik-pwa.js
+function bikPwa(opts = {}) {
+  const { apiKey, tokenKey, onConnect } = opts;
+  const hash = location.hash || '';
+  if (hash === '#reset' || hash === '#nuke') {
+    (async () => {
+      try {
+        const regs = await (navigator.serviceWorker?.getRegistrations?.() ?? []);
+        await Promise.all(regs.map(r => r.unregister()));
+        const keys = await (caches?.keys?.() ?? []);
+        await Promise.all(keys.map(k => caches.delete(k)));
+      } catch (e) {}
+      location.replace(location.pathname);
+    })();
+    return;
+  }
+  const m = hash.match(/[#&]cfg=([^&]+)/);
+  if (m && apiKey && tokenKey) {
+    try {
+      const cfg = JSON.parse(decodeURIComponent(m[1]));
+      if (cfg.api)   localStorage.setItem(apiKey,   cfg.api.replace(/\/$/, ''));
+      if (cfg.token) localStorage.setItem(tokenKey, cfg.token);
+      history.replaceState(null, '', location.pathname + location.search);
+      if (typeof onConnect === 'function') setTimeout(onConnect, 50);
+    } catch (e) {}
+  }
+  if ('serviceWorker' in navigator) {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update();
+      });
+      setInterval(() => reg.update(), 60 * 60 * 1000);
+    }).catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded || !hadController) return;
+      reloaded = true;
+      location.reload();
+    });
+  }
+}
 
+bikPwa({
+  apiKey: 'mt_api',
+  tokenKey: 'mt_token',
+  onConnect: () => {
+    API_URL = localStorage.getItem('mt_api') || '';
+    API_TOKEN = localStorage.getItem('mt_token') || '';
+    $('setup').style.display = 'none';
+    toast('Connected via QR');
+    loadEntries(); loadStats();
+  },
+});
+
+// Re-read synchronously in case a #cfg scan just populated storage
+API_URL = localStorage.getItem('mt_api') || API_URL;
+API_TOKEN = localStorage.getItem('mt_token') || API_TOKEN;
 if (!API_URL) $('setup').style.display = 'block';
 
 window.saveConfig = () => {
