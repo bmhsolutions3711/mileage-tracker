@@ -142,6 +142,22 @@ const $ = id => document.getElementById(id);
 let API_URL = localStorage.getItem('mt_api') || '';
 let API_TOKEN = localStorage.getItem('mt_token') || '';
 
+// Scan-to-connect: a QR deep-link carries config in the URL fragment
+// (#cfg=<url-encoded JSON>). Fragments never reach GitHub's servers, so the
+// token stays client-side. Apply it, persist, then wipe the hash from history
+// so the token never lingers in the address bar or back-stack.
+(function applyConfigFragment() {
+  const m = (location.hash || '').match(/[#&]cfg=([^&]+)/);
+  if (!m) return;
+  try {
+    const cfg = JSON.parse(decodeURIComponent(m[1]));
+    if (cfg.api)   { API_URL = cfg.api.replace(/\/$/, ''); localStorage.setItem('mt_api', API_URL); }
+    if (cfg.token) { API_TOKEN = cfg.token; localStorage.setItem('mt_token', API_TOKEN); }
+    history.replaceState(null, '', location.pathname + location.search);
+    setTimeout(() => toast('Connected via QR'), 300);
+  } catch (e) { /* malformed fragment — ignore, fall through to manual setup */ }
+})();
+
 if (!API_URL) $('setup').style.display = 'block';
 
 window.saveConfig = () => {
