@@ -36,6 +36,9 @@ header p{font-size:.8rem;color:var(--muted);margin-top:2px}
 .field label{display:block;font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
 .field input{width:100%;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:1.1rem;font-weight:600}
 .field input:focus{outline:none;border-color:var(--accent)}
+.trailer-chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.tchip{flex:1;min-width:96px;background:var(--card);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:11px;font-size:.95rem;font-weight:600;cursor:pointer}
+.tchip.sel{border-color:var(--accent);color:var(--accent);background:rgba(245,158,11,.12)}
 .btn-row{display:flex;gap:8px;margin-top:14px}
 .btn{flex:1;padding:12px;border:none;border-radius:8px;font-size:.9rem;font-weight:600;cursor:pointer}
 .btn-save{background:var(--accent2);color:#000}
@@ -157,8 +160,9 @@ header p{font-size:.8rem;color:var(--muted);margin-top:2px}
       <input type="number" id="trailerInput">
     </div>
     <div class="field">
-      <label>Trailer Name</label>
-      <input type="text" id="trailerNameInput">
+      <label>Trailer</label>
+      <div class="trailer-chips" id="trailerChips"></div>
+      <input type="text" id="trailerNameInput" placeholder="or type a trailer name">
     </div>
     <div class="field">
       <label>Date</label>
@@ -335,6 +339,7 @@ $('cameraInput').addEventListener('change', async (e) => {
     $('odometerInput').value = data.odometer || '';
     $('trailerInput').value = data.trailer_miles || '';
     $('trailerNameInput').value = data.trailer_name || '';
+    syncChipSelection(data.trailer_name || '');
     $('dateInput').value = toLocalISO(capturedDate);
 
     $('loading').classList.remove('visible');
@@ -511,10 +516,49 @@ document.querySelector('header').addEventListener('pointerdown', () => {
 document.querySelector('header').addEventListener('pointerup', () => clearTimeout(pressTimer));
 document.querySelector('header').addEventListener('pointerleave', () => clearTimeout(pressTimer));
 
+// ── Trailer picker ──
+// Canonical fleet from the backend (/api/trailers); falls back to the known
+// two so the picker still works offline / pre-connect. Chips quick-fill the
+// text field; the backend canonicalizes whatever name is saved.
+let FLEET = [];
+async function loadTrailers(){
+  let list = [{name:'Iron Bull',status:'active'},{name:'Big Boy',status:'standby'}];
+  try {
+    if (API_URL){
+      const r = await fetch(`${API_URL}/api/trailers`, {headers: headers()});
+      const d = await r.json();
+      if (d.trailers && d.trailers.length) list = d.trailers;
+    }
+  } catch {}
+  FLEET = list;
+  renderTrailerChips();
+}
+function renderTrailerChips(){
+  const box = $('trailerChips');
+  if (!box) return;
+  box.innerHTML = FLEET.map(t =>
+    `<button type="button" class="tchip" data-name="${t.name}" onclick="pickTrailer(this.dataset.name)">${t.name}</button>`
+  ).join('');
+  syncChipSelection($('trailerNameInput').value);
+}
+window.pickTrailer = (name) => {
+  $('trailerNameInput').value = name;
+  syncChipSelection(name);
+};
+function syncChipSelection(name){
+  const low = (name||'').trim().toLowerCase();
+  document.querySelectorAll('#trailerChips .tchip').forEach(c => {
+    const n = c.dataset.name.toLowerCase();
+    c.classList.toggle('sel', !!low && (low === n || low.includes(n) || n.includes(low)));
+  });
+}
+$('trailerNameInput').addEventListener('input', e => syncChipSelection(e.target.value));
+
 // Init
 loadEntries();
 loadStats();
 loadCpm();
+loadTrailers();
 </script>
 </body>
 </html>
