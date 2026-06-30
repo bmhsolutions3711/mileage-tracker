@@ -203,8 +203,22 @@ let API_TOKEN = localStorage.getItem('mt_token') || '';
 // ── BIK PWA standard: auto-update + #reset + scan-to-connect ──────────────
 // Canonical source: ~/Local Models/bik/pwa-standard/bik-pwa.js
 function bikPwa(opts = {}) {
-  const { apiKey, tokenKey, onConnect } = opts;
+  const { apiKey, tokenKey, onConnect, onResume } = opts;
   const hash = location.hash || '';
+
+  // ── Resume — refetch data when the page comes back from bfcache/background.
+  // Standalone PWAs reopened from the app switcher are often restored from
+  // bfcache: the JS never re-runs, so the one-time fetch at module load goes
+  // stale until a manual reload. pageshow.persisted catches that case;
+  // visibilitychange catches the "switched tabs/apps and back" case too.
+  if (typeof onResume === 'function') {
+    window.addEventListener('pageshow', (e) => {
+      if (e.persisted) onResume();
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') onResume();
+    });
+  }
   if (hash === '#reset' || hash === '#nuke') {
     (async () => {
       try {
@@ -253,6 +267,10 @@ bikPwa({
     $('setup').style.display = 'none';
     toast('Connected via QR');
     loadEntries(); loadStats();
+  },
+  onResume: () => {
+    if (!API_URL) return;
+    loadEntries(); loadStats(); loadCpm(); loadTrailers();
   },
 });
 
